@@ -1,0 +1,14 @@
+CORREÇÃO DO DEPLOY DO CONECTA
+
+O projeto precisa executar a partir da pasta que contém package.json, server.js e index.html.
+
+Se você mantiver a pasta Conecta_GitHub dentro do repositório GitHub:
+1. Render > conecta > Settings.
+2. Em Build & Deploy, defina Root Directory como: Conecta_GitHub
+3. Build Command: npm install
+4. Start Command: npm start
+5. Salve e faça Manual Deploy > Deploy latest commit.
+
+OU use os arquivos deste ZIP diretamente na raiz do repositório (não envie a pasta externa como subpasta). Depois faça upload dos arquivos e pastas que estão dentro do ZIP.
+
+O serviço precisa ser Web Service no Render, não Static Site. O servidor usa process.env.PORT e aceita WebSocket no mesmo domínio HTTPS.
