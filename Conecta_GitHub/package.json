@@ -1,9 +1,0 @@
-{
-  "name": "conecta-rede-local",
-  "version": "2.0.0",
-  "private": false,
-  "description": "Chat em tempo real e envio de arquivos por salas compartilhadas",
-  "main": "server.js",
-  "scripts": {"start": "node server.js"},
-  "dependencies": {"ws": "^8.18.0"}
-}
