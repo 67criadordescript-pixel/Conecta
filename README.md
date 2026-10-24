@@ -29,7 +29,7 @@ Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos ent
 - `MAX_DEVICES_PER_ROOM` (padrão 10)
 - `MESSAGE_LIMIT_PER_SECOND` (padrão 8)
 - `ALLOWED_ORIGINS` (lista de origens separadas por vírgula; só configure origens que controla)
-- `ADMIN_EMAIL` (e-mail autorizado para entrar em `/admin`) e `ADMIN_PASSWORD` (senha exclusiva, aleatória e com no mínimo 16 caracteres; configure no Render e nunca a coloque no GitHub)
+- `ADMIN_EMAIL` (já definido no `render.yaml` como joaomacieltech@gmail.com; no Render o caractere `@` deve ser inserido no campo Value, não Key) e `ADMIN_PASSWORD` (senha exclusiva, aleatória e com no mínimo 16 caracteres; configure no Render e nunca a coloque no GitHub)
 
 ## Segurança e limitações conhecidas
 - O código de sala deve ter de 8 a 32 caracteres (`A-Z`, `a-z`, números, hífen ou sublinhado). É uma senha compartilhada simples, não uma conta com identidade verificada. Use código aleatório e exclusivo.

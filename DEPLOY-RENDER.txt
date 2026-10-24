@@ -17,3 +17,12 @@ MESSAGE_LIMIT_PER_SECOND=8
 ALLOWED_ORIGINS=https://seu-dominio.example,https://seu-servico.onrender.com
 
 Não configure ALLOWED_ORIGINS com domínios que você não controla. Se definir a variável, inclua cada origem exata usada pelos usuários, com https:// e sem caminho.
+
+
+CORREÇÃO DE LOGIN ADMINISTRATIVO (Conecta 3.4)
+- ADMIN_EMAIL já está definido no render.yaml como joaomacieltech@gmail.com. Não precisa digitar @ manualmente no Render para configurar o e-mail.
+- No painel Render > serviço > Environment, configure ADMIN_PASSWORD no campo Value (não no campo Key).
+- A senha deve ter no mínimo 16 caracteres. A senha curta compartilhada anteriormente não será aceita; crie uma senha nova, exclusiva e longa.
+- Exemplo de formato (NÃO use literalmente): palavra-palavra-ano-símbolos-aleatórios.
+- Salve e faça um novo deploy. Depois acesse /admin.
+- Não coloque senha no GitHub nem em render.yaml.
