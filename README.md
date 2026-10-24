@@ -1,8 +1,5 @@
 # Conecta 3.1 — versão revisada
 
-SITE PARA CONEXÃO:
-https://conecta-rrtn.onrender.com/
-
 Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos entre dispositivos conectados à mesma sala. Compatível com Render; a interface funciona em navegadores modernos de computador, tablet e celular.
 
 ## Funcionalidades
@@ -43,3 +40,9 @@ Os documentos em `/terms` e `/privacy` são modelos informativos, não aconselha
 
 ## Cloudflare
 Consulte `CLOUDFLARE.md`. A integração exige domínio próprio e alterações no painel DNS/Cloudflare e no Render. O código sozinho não ativa CDN, WAF ou proteção DDoS.
+
+Compartilhamento de tela em tempo real
+- Na sala conectada, clique em “Compartilhar tela” e escolha explicitamente a tela, janela ou guia no seletor do navegador.
+- O navegador exige contexto seguro HTTPS (Render fornece HTTPS) e autorização explícita do usuário. O compartilhamento pode ser interrompido a qualquer momento pelo botão do site ou pelo controle do navegador.
+- O vídeo usa WebRTC diretamente entre os dispositivos; o servidor retransmite apenas a sinalização. STUN ajuda a estabelecer conexões, mas algumas redes/firewalls exigem um servidor TURN para funcionar. Nenhuma solução de navegador pode garantir conexão em todas as redes sem infraestrutura TURN adequada.
+- Para uma conexão melhor, mantenha os dois dispositivos na mesma sala e use navegadores atualizados. A captura não inclui áudio.

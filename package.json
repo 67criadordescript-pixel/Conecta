@@ -1,8 +1,8 @@
 {
   "name": "conecta-rede-local",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "private": true,
-  "description": "Conecta — chat em tempo real e compartilhamento temporário de arquivos entre dispositivos",
+  "description": "Conecta — chat, arquivos e compartilhamento de tela em tempo real entre dispositivos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

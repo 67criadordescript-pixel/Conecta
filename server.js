@@ -11,6 +11,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const INDEX = path.join(__dirname, 'index.html');
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_WS_BYTES = 12 * 1024 * 1024;
+const MAX_SIGNAL_BYTES = 64 * 1024;
+const SIGNAL_LIMIT = 60;
 const MAX_TEXT = 2000;
 const MAX_NAME = 24;
 const MAX_CLIENTS = positiveInt(process.env.MAX_CLIENTS, 250);
@@ -20,6 +22,7 @@ const MESSAGE_LIMIT = positiveInt(process.env.MESSAGE_LIMIT_PER_SECOND, 8);
 const ROOM_PATTERN = /^[A-Za-z0-9_-]{8,32}$/;
 const clients = new Map();
 const ipConnections = new Map();
+const screenOwners = new Map();
 let nextId = 1;
 let shuttingDown = false;
 
@@ -73,7 +76,7 @@ const privacyPage = htmlPage('Política de privacidade', `
 <p class="note"><strong>Modelo inicial:</strong> esta política deve ser completada com a identidade do controlador, contato, hospedagem, configurações reais e revisão jurídica. Não publique sem preencher esses dados.</p>
 <h2>1. Quem é responsável</h2><p>O responsável pelo tratamento deve ser identificado pelo operador do site. Antes da publicação, informe nome/razão social e um canal de contato válido no README e nesta política. Não invente nem deixe essa identificação indefinida em produção.</p>
 <h2>2. Dados tratados</h2><p>O conteúdo das mensagens, nomes de dispositivos, códigos de sala e arquivos são processados pelo servidor para retransmissão entre participantes conectados. O código de sala não deve ser considerado autenticação forte. O provedor de hospedagem e a infraestrutura de proteção podem processar dados técnicos, como endereço IP, horário de acesso e registros de segurança, de acordo com suas próprias políticas e configurações.</p>
-<h2>3. Armazenamento e retenção</h2><p>Esta versão não grava mensagens ou arquivos em banco de dados. Conteúdo é mantido em memória durante a retransmissão e pode permanecer no navegador dos participantes enquanto a página estiver aberta. Logs operacionais da plataforma de hospedagem podem existir fora do controle direto do aplicativo e seguem as configurações do provedor.</p>
+<h2>3. Armazenamento e retenção</h2><p>Esta versão não grava mensagens ou arquivos em banco de dados. Conteúdo é mantido em memória durante a retransmissão e pode permanecer no navegador dos participantes enquanto a página estiver aberta. Logs operacionais da plataforma de hospedagem podem existir fora do controle direto do aplicativo e seguem as configurações do provedor.</p><p>O compartilhamento de tela é iniciado somente após uma ação explícita do usuário e a seleção de uma tela, janela ou guia no navegador. O fluxo de vídeo usa WebRTC diretamente entre os dispositivos participantes; o servidor Conecta encaminha mensagens de sinalização para estabelecer a conexão. Não há captura oculta nem gravação pelo aplicativo. A disponibilidade pode depender da rede, do navegador e de infraestrutura de conectividade.</p>
 <h2>4. Finalidades e bases legais</h2><p>Os dados são processados para conectar dispositivos, encaminhar mensagens e arquivos, manter a segurança e prevenir abusos. O operador deve definir e documentar as bases legais aplicáveis à sua operação, inclusive conforme a LGPD, e ajustar esta seção à prática real do serviço.</p>
 <h2>5. Compartilhamento</h2><p>O conteúdo é compartilhado com os demais dispositivos conectados à mesma sala e processado pela infraestrutura necessária para hospedar e proteger o site. Não prometa ausência total de compartilhamento técnico: hospedagem, rede e proteção contra ataques podem processar metadados.</p>
 <h2>6. Segurança</h2><p>São adotadas medidas técnicas para reduzir riscos, mas nenhum serviço conectado à internet pode garantir segurança absoluta. O serviço não oferece criptografia ponta a ponta nem análise antivírus de arquivos. Evite compartilhar dados pessoais sensíveis.</p>
@@ -88,7 +91,7 @@ const server = http.createServer((req, res) => {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'X-Frame-Options': 'DENY',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), display-capture=(self)',
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     'Cache-Control': 'no-store'
@@ -158,7 +161,7 @@ wss.on('connection', ws => {
   const id = String(nextId++);
   const ip = ws.clientIp || 'unknown';
   ipConnections.set(ip, (ipConnections.get(ip) || 0) + 1);
-  const c = { ws, id, ip, name: 'Dispositivo', room: null, authenticated: false, rateWindow: Date.now(), messageCount: 0, badMessages: 0 };
+  const c = { ws, id, ip, name: 'Dispositivo', room: null, authenticated: false, rateWindow: Date.now(), messageCount: 0, signalWindow: Date.now(), signalCount: 0, badMessages: 0 };
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', raw => {
@@ -183,12 +186,52 @@ wss.on('connection', ws => {
       return;
     }
     const now = Date.now();
-    if (now - c.rateWindow >= 1000) { c.rateWindow = now; c.messageCount = 0; }
-    if (++c.messageCount > MESSAGE_LIMIT) return ws.close(1008, 'Rate limit exceeded');
+    const isRtcSignal = ['rtc-offer', 'rtc-answer', 'rtc-ice'].includes(m.type);
+    if (isRtcSignal) {
+      if (now - c.signalWindow >= 1000) { c.signalWindow = now; c.signalCount = 0; }
+      if (++c.signalCount > SIGNAL_LIMIT) return ws.close(1008, 'Signaling rate limit exceeded');
+    } else {
+      if (now - c.rateWindow >= 1000) { c.rateWindow = now; c.messageCount = 0; }
+      if (++c.messageCount > MESSAGE_LIMIT) return ws.close(1008, 'Rate limit exceeded');
+    }
     if (m.type === 'join') {
       c.name = safeName(m.name);
       sendToRoom(c.room, { type: 'system', text: `${c.name} entrou na sala.` }, id);
       sendToRoom(c.room, { type: 'devices', devices: roomDevices(c.room) });
+      return;
+    }
+    if (m.type === 'screen-start') {
+      const owner = screenOwners.get(c.room);
+      if (owner && owner !== id) { sendJson(ws, { type: 'warning', message: 'Outro dispositivo já está compartilhando a tela.' }); return; }
+      screenOwners.set(c.room, id);
+      sendToRoom(c.room, { type: 'screen-start', from: id, name: c.name }, id);
+      return;
+    }
+    if (m.type === 'screen-stop') {
+      if (screenOwners.get(c.room) === id) {
+        screenOwners.delete(c.room);
+        sendToRoom(c.room, { type: 'screen-stop', from: id, name: c.name }, id);
+      }
+      return;
+    }
+    if (['rtc-offer', 'rtc-answer', 'rtc-ice'].includes(m.type)) {
+      if (typeof m.to !== 'string' || m.to === id) return invalidMessage(c);
+      const target = clients.get(m.to);
+      if (!target || !target.authenticated || target.room !== c.room) return;
+      const owner = screenOwners.get(c.room);
+      if (!owner || (m.type === 'rtc-offer' && owner !== id) || (m.type === 'rtc-answer' && owner !== m.to) || (m.type === 'rtc-ice' && owner !== id && owner !== m.to)) return invalidMessage(c);
+      let relay;
+      if (m.type === 'rtc-offer' || m.type === 'rtc-answer') {
+        if (!m.description || typeof m.description !== 'object' || m.description.type !== (m.type === 'rtc-offer' ? 'offer' : 'answer') || typeof m.description.sdp !== 'string' || !m.description.sdp.length || m.description.sdp.length > MAX_SIGNAL_BYTES) return invalidMessage(c);
+        relay = { type: m.type, from: id, name: c.name, description: { type: m.description.type, sdp: m.description.sdp } };
+      } else {
+        const candidate = m.candidate;
+        if (!candidate || typeof candidate !== 'object' || typeof candidate.candidate !== 'string' || candidate.candidate.length > 4096 || (candidate.sdpMid != null && (typeof candidate.sdpMid !== 'string' || candidate.sdpMid.length > 256)) || (candidate.sdpMLineIndex != null && (!Number.isInteger(candidate.sdpMLineIndex) || candidate.sdpMLineIndex < 0 || candidate.sdpMLineIndex > 255)) || (candidate.usernameFragment != null && (typeof candidate.usernameFragment !== 'string' || candidate.usernameFragment.length > 256))) return invalidMessage(c);
+        relay = { type: m.type, from: id, name: c.name, candidate: { candidate: candidate.candidate, sdpMid: candidate.sdpMid ?? null, sdpMLineIndex: candidate.sdpMLineIndex ?? null, usernameFragment: candidate.usernameFragment ?? null } };
+      }
+      const encoded = JSON.stringify(relay);
+      if (Buffer.byteLength(encoded) > MAX_SIGNAL_BYTES) return invalidMessage(c);
+      sendJson(target.ws, relay);
       return;
     }
     if (m.type === 'chat') {
@@ -214,6 +257,7 @@ wss.on('connection', ws => {
     const count = Math.max(0, (ipConnections.get(ip) || 1) - 1);
     if (count) ipConnections.set(ip, count); else ipConnections.delete(ip);
     if (c.room) {
+      if (screenOwners.get(c.room) === id) { screenOwners.delete(c.room); sendToRoom(c.room, { type: 'screen-stop', from: id, name: c.name }); }
       if (c.authenticated) sendToRoom(c.room, { type: 'system', text: `${c.name} saiu da sala.` });
       sendToRoom(c.room, { type: 'devices', devices: roomDevices(c.room) });
     }

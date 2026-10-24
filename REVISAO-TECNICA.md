@@ -30,3 +30,11 @@ O teste de integração `npm test` usa o pacote `ws`, listado em `package.json`.
 - Desconectar rede ou reiniciar o serviço e verificar as tentativas automáticas de reconexão.
 - Testar sala com código inválido, limite de participantes e múltiplos dispositivos atrás da mesma rede.
 - Verificar logs, eventos de segurança Cloudflare e uso de CPU/memória no Render.
+
+## Compartilhamento de tela (implementação atual)
+- Captura via `navigator.mediaDevices.getDisplayMedia`, iniciada somente por clique explícito e escolha do usuário no seletor nativo do navegador.
+- Vídeo transmitido por WebRTC entre pares; o servidor retransmite apenas sinalização autenticada à mesma sala.
+- Apenas um compartilhamento ativo por sala; validação de sala/destinatário, limites de tamanho e limite separado de mensagens de sinalização.
+- Encerramento tratado por botão, evento `ended` da faixa de vídeo, desconexão WebSocket e encerramento da sessão.
+- STUN está configurado para facilitar a conectividade. Redes restritivas podem exigir TURN; conectividade universal não pode ser garantida sem um serviço TURN gerenciado e testado.
+- Testes automatizados incluem os caminhos de sinalização do servidor quando as dependências estão instaladas. Teste real de mídia entre navegadores/dispositivos ainda deve ser realizado após o deploy.
