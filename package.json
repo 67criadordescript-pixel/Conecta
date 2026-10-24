@@ -1,8 +1,8 @@
 {
   "name": "conecta-rede-local",
-  "version": "3.3.0",
+  "version": "3.2.1",
   "private": true,
-  "description": "Conecta — chat, arquivos, compartilhamento de tela e painel administrativo protegido",
+  "description": "Conecta — chat, arquivos e compartilhamento de tela em tempo real, sem painel administrativo",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -1,53 +1,46 @@
-# Conecta 3.3 — painel administrativo com privacidade
+# Conecta 3.2.1 — chat, arquivos e compartilhamento de tela
 
-Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos entre dispositivos conectados à mesma sala. Compatível com Render; a interface funciona em navegadores modernos de computador, tablet e celular.
+Aplicação Node.js/WebSocket para conversar e transferir arquivos temporariamente entre dispositivos conectados à mesma sala. Funciona em navegadores modernos de computador, tablet e celular e pode ser hospedada no Render.
 
-## Funcionalidades
-- Interface responsiva com busca local de mensagens, contador de caracteres e lista de dispositivos conectados.
-- Chat em tempo real e compartilhamento de arquivos de até 8 MB por arquivo.
-- Rotas de Termos de Uso (`/terms`), Política de Privacidade (`/privacy`), 404 amigável e health check (`/healthz`).
-- Painel administrativo protegido em `/admin`, com lista de salas vistas na instância, dispositivos conectados, mensagens recentes e metadados de arquivos; atualização automática a cada 2,5 segundos.
-- O login administrativo exige `ADMIN_EMAIL` válido e `ADMIN_PASSWORD` com no mínimo 16 caracteres. Configure ambas como variáveis de ambiente no Render; o painel fica desativado se estiverem ausentes. Sessão HttpOnly/SameSite, tentativas de login limitadas e histórico limitado a 500 eventos em memória.
-- O painel mostra o estado do compartilhamento de tela, mas não captura, grava nem espelha o vídeo dos usuários.
-- Mensagens e nomes renderizados via `textContent`, evitando interpretar texto do usuário como HTML.
-- Limite de tamanho de payload, validação de mensagens, validação de Base64 e nome de arquivo, limite de mensagens, limite de conexões, limite de participantes por sala, heartbeat WebSocket e até cinco tentativas automáticas de reconexão com espera progressiva.
-- Cabeçalhos de segurança, CSP, `nosniff`, proteção contra enquadramento e política de permissões restrita.
-- Testes automatizados com `npm test`.
+## O que esta versão inclui
+- Chat em tempo real, busca local de mensagens e lista de dispositivos conectados.
+- Envio de arquivos de até 8 MB por arquivo.
+- Compartilhamento de tela com autorização explícita do navegador, usando WebRTC entre os dispositivos.
+- Ícone de pasta animado para envio de arquivos e interface responsiva.
+- Reconexão automática com espera progressiva, controles para desconectar e encerramento de compartilhamento.
+- Validação de mensagens e sinalização WebRTC, limites por IP/sala, limite de mensagens, heartbeat WebSocket e cabeçalhos HTTP de segurança.
+- Rotas `/terms`, `/privacy`, `/healthz`, página 404 e testes automatizados.
+- **Não possui painel administrativo, login de administrador, endpoint `/admin` ou variável `ADMIN_PASSWORD`.**
 
-## Implantação no Render
-1. Envie os arquivos deste ZIP para a raiz do repositório GitHub.
-2. Build Command: `npm install`.
-3. Start Command: `npm start`.
-4. Health Check Path: `/healthz`.
-5. Aguarde o deploy e teste a página principal, `/terms`, `/privacy`, `/healthz` e a comunicação entre dois dispositivos.
-6. Consulte `DEPLOY-RENDER.txt` e `CLOUDFLARE.md`.
+## Publicar no Render
+1. Extraia o ZIP e envie os arquivos diretamente para a raiz do repositório GitHub (não envie uma pasta extra envolvendo todos os arquivos).
+2. No Render, configure o serviço para usar esse repositório e a raiz correta.
+3. Build Command: `npm install`.
+4. Start Command: `npm start`.
+5. Health Check Path: `/healthz`.
+6. Faça um novo deploy e aguarde o status `Live`.
+7. Teste em dois dispositivos: entre na mesma sala, envie mensagens/arquivo e teste o compartilhamento de tela.
 
 ## Variáveis opcionais
-- `CONTACT_EMAIL` (endereço real e monitorado exibido nas páginas legais; configure no Render antes de publicar)
-- `MAX_CLIENTS` (padrão 250)
-- `MAX_CONNECTIONS_PER_IP` (padrão 12)
-- `MAX_DEVICES_PER_ROOM` (padrão 10)
-- `MESSAGE_LIMIT_PER_SECOND` (padrão 8)
-- `ALLOWED_ORIGINS` (lista de origens separadas por vírgula; só configure origens que controla)
-- `ADMIN_EMAIL` (já definido no `render.yaml` como joaomacieltech@gmail.com; no Render o caractere `@` deve ser inserido no campo Value, não Key) e `ADMIN_PASSWORD` (senha exclusiva, aleatória e com no mínimo 16 caracteres; configure no Render e nunca a coloque no GitHub)
+- `CONTACT_EMAIL`: endereço de contato real e monitorado, exibido nas páginas legais.
+- `MAX_CLIENTS` (padrão 250).
+- `MAX_CONNECTIONS_PER_IP` (padrão 12).
+- `MAX_DEVICES_PER_ROOM` (padrão 10).
+- `MESSAGE_LIMIT_PER_SECOND` (padrão 8).
+- `ALLOWED_ORIGINS`: lista separada por vírgulas de origens exatas que você controla; deixe sem configurar se não precisar de origens adicionais.
 
-## Segurança e limitações conhecidas
-- O código de sala deve ter de 8 a 32 caracteres (`A-Z`, `a-z`, números, hífen ou sublinhado). É uma senha compartilhada simples, não uma conta com identidade verificada. Use código aleatório e exclusivo.
-- O servidor retransmite mensagens e arquivos; **não há criptografia ponta a ponta**. Não envie senhas, documentos confidenciais ou dados sensíveis.
-- Não há banco de dados. Se o painel administrativo for habilitado, o servidor mantém os 500 eventos mais recentes em memória, incluindo texto das mensagens e metadados de arquivos, acessíveis a administradores autenticados; o histórico some ao reiniciar. Os bytes dos arquivos não são retidos no painel.
-- O painel `/admin` é uma ferramenta de administração sensível: informe os participantes de forma transparente. Ele não mostra vídeo de tela; exibe apenas o estado e o nome do participante compartilhando. O fluxo WebRTC continua entre dispositivos da sala.
-- Limites por IP são mantidos em memória por instância. No Render, o código lê `X-Forwarded-For` somente quando `RENDER_SERVICE_ID` está definido; em outras hospedagens, configure explicitamente o proxy confiável antes de usar esse cabeçalho. Em múltiplas instâncias, os limites não são compartilhados; use um armazenamento distribuído para proteção consistente.
-- O CSP permite scripts inline porque o aplicativo atual contém JavaScript inline. Uma futura melhoria é mover scripts e estilos para arquivos próprios e remover `'unsafe-inline'`.
-- A aplicação não substitui monitoramento, backups, revisão de dependências, teste de invasão ou auditoria de segurança independente.
+## Segurança e limites
+- O código da sala tem de 8 a 32 caracteres (`A-Z`, `a-z`, números, hífen e sublinhado). Ele funciona como segredo compartilhado, não como identidade verificada; use um código exclusivo e difícil de adivinhar.
+- O servidor retransmite mensagens e arquivos. **Não há criptografia ponta a ponta**, armazenamento permanente ou análise antivírus dos arquivos.
+- Mensagens e arquivos ficam na memória durante a retransmissão; o servidor não mantém histórico em banco de dados. O provedor de hospedagem pode manter seus próprios logs operacionais.
+- O limite de arquivo é 8 MB. Não envie senhas, dados sensíveis ou arquivos confidenciais.
+- O compartilhamento de tela começa somente após ação explícita do usuário. O vídeo trafega por WebRTC; o servidor encaminha apenas a sinalização. Algumas redes podem exigir infraestrutura TURN para conexões confiáveis.
+- O CSP permite scripts inline porque a interface atual contém JavaScript inline. A aplicação não substitui auditoria independente nem monitoramento operacional.
 
 ## Documentos legais
-Os documentos em `/terms` e `/privacy` são modelos informativos, não aconselhamento jurídico. Antes da publicação pública, identifique o controlador/responsável, informe um contato monitorado, revise a coleta real da hospedagem/CDN e solicite revisão jurídica de acordo com a LGPD e demais leis aplicáveis. Não publique declarações que não correspondam ao comportamento real do serviço.
+`/terms` e `/privacy` são modelos informativos, não aconselhamento jurídico. Antes de publicar, identifique o responsável, configure `CONTACT_EMAIL`, revise a coleta real da hospedagem/CDN e peça revisão jurídica adequada à LGPD. Não publique declarações que não correspondam ao funcionamento real.
 
-## Cloudflare
-Consulte `CLOUDFLARE.md`. A integração exige domínio próprio e alterações no painel DNS/Cloudflare e no Render. O código sozinho não ativa CDN, WAF ou proteção DDoS.
+## Testes
+Execute `npm install` e depois `npm test` em ambiente com Node.js 20 ou superior.
 
-Compartilhamento de tela em tempo real
-- Na sala conectada, clique em “Compartilhar tela” e escolha explicitamente a tela, janela ou guia no seletor do navegador.
-- O navegador exige contexto seguro HTTPS (Render fornece HTTPS) e autorização explícita do usuário. O compartilhamento pode ser interrompido a qualquer momento pelo botão do site ou pelo controle do navegador.
-- O vídeo usa WebRTC diretamente entre os dispositivos; o servidor retransmite apenas a sinalização. STUN ajuda a estabelecer conexões, mas algumas redes/firewalls exigem um servidor TURN para funcionar. Nenhuma solução de navegador pode garantir conexão em todas as redes sem infraestrutura TURN adequada.
-- Para uma conexão melhor, mantenha os dois dispositivos na mesma sala e use navegadores atualizados. A captura não inclui áudio.
+Consulte `DEPLOY-RENDER.txt` e `CLOUDFLARE.md` para detalhes adicionais. A proteção da Cloudflare não é ativada apenas por estes arquivos: depende de domínio e configuração no painel do provedor.

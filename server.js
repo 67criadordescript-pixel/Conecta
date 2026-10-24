@@ -9,15 +9,6 @@ const WebSocket = require('ws');
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
 const INDEX = path.join(__dirname, 'index.html');
-const ADMIN_INDEX = path.join(__dirname, 'admin.html');
-const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
-const ADMIN_SESSIONS = new Map();
-const ADMIN_LOGIN_ATTEMPTS = new Map();
-const ADMIN_EVENTS = [];
-const ROOM_HISTORY = new Map();
-const ADMIN_SESSION_TTL = 8 * 60 * 60 * 1000;
-const MAX_ADMIN_EVENTS = 500;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_WS_BYTES = 12 * 1024 * 1024;
 const MAX_SIGNAL_BYTES = 64 * 1024;
@@ -49,68 +40,6 @@ function safeFilename(value) {
 function roomDevices(room) {
   return [...clients.entries()].filter(([, c]) => c.room === room && c.authenticated).map(([id, c]) => ({ id, name: c.name }));
 }
-function recordAdminEvent(room, type, details = {}) {
-  const now = Date.now();
-  if (room && !ROOM_HISTORY.has(room)) {
-    if (ROOM_HISTORY.size >= 1000) ROOM_HISTORY.delete(ROOM_HISTORY.keys().next().value);
-    ROOM_HISTORY.set(room, { room, createdAt: now, lastActivity: now, messageCount: 0, fileCount: 0 });
-  }
-  const stats = room ? ROOM_HISTORY.get(room) : null;
-  if (stats) {
-    stats.lastActivity = now;
-    if (type === 'message') stats.messageCount++;
-    if (type === 'file') stats.fileCount++;
-  }
-  ADMIN_EVENTS.push({ id: crypto.randomUUID(), at: now, room: room || null, type, ...details });
-  if (ADMIN_EVENTS.length > MAX_ADMIN_EVENTS) ADMIN_EVENTS.splice(0, ADMIN_EVENTS.length - MAX_ADMIN_EVENTS);
-}
-function parseCookies(req) {
-  const result = Object.create(null);
-  for (const part of String(req.headers.cookie || '').split(';')) {
-    const i = part.indexOf('='); if (i < 1) continue;
-    const key = part.slice(0, i).trim();
-    try { result[key] = decodeURIComponent(part.slice(i + 1).trim()); } catch {}
-  }
-  return result;
-}
-function adminSession(req) {
-  const token = parseCookies(req).conecta_admin;
-  if (!token) return null;
-  const session = ADMIN_SESSIONS.get(token);
-  if (!session || session.expiresAt < Date.now()) { if (session) ADMIN_SESSIONS.delete(token); return null; }
-  session.expiresAt = Date.now() + ADMIN_SESSION_TTL;
-  return { token, session };
-}
-function constantTimeEqual(a, b) {
-  const left = Buffer.from(String(a)); const right = Buffer.from(String(b));
-  return left.length === right.length && crypto.timingSafeEqual(left, right);
-}
-function adminSnapshot() {
-  const rooms = new Map();
-  for (const [room, stats] of ROOM_HISTORY) rooms.set(room, { ...stats, devices: [], active: false, sharing: false, sharer: null });
-  for (const [, c] of clients) {
-    if (!c.authenticated || !c.room) continue;
-    if (!rooms.has(c.room)) rooms.set(c.room, { room: c.room, createdAt: Date.now(), lastActivity: Date.now(), messageCount: 0, fileCount: 0, devices: [], active: true, sharing: false, sharer: null });
-    const r = rooms.get(c.room); r.active = true; r.devices.push({ name: c.name, connectedAt: c.connectedAt || Date.now() });
-  }
-  for (const [room, ownerId] of screenOwners) {
-    const r = rooms.get(room); const owner = clients.get(ownerId);
-    if (r) { r.sharing = true; r.sharer = owner ? owner.name : 'Dispositivo'; }
-  }
-  return { generatedAt: Date.now(), rooms: [...rooms.values()].sort((a,b)=>b.lastActivity-a.lastActivity), events: ADMIN_EVENTS.slice(-MAX_ADMIN_EVENTS).reverse(), retention: 'Somente memória do processo; até 500 eventos recentes. Reiniciar o servidor limpa o histórico.' };
-}
-function readBody(req, maxBytes = 4096) {
-  return new Promise((resolve, reject) => {
-    let data = ''; let size = 0;
-    req.on('data', chunk => { size += chunk.length; if (size > maxBytes) { reject(new Error('too-large')); req.destroy(); return; } data += chunk.toString('utf8'); });
-    req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch { reject(new Error('invalid-json')); } });
-    req.on('error', reject);
-  });
-}
-function jsonResponse(res, status, value, headers = {}) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', ...headers });
-  res.end(JSON.stringify(value));
-}
 function sendJson(ws, value) {
   if (ws.readyState !== WebSocket.OPEN) return false;
   try { ws.send(JSON.stringify(value), error => { if (error) ws.terminate(); }); return true; }
@@ -135,7 +64,7 @@ function htmlPage(title, body) {
 const termsPage = htmlPage('Termos de uso', `
 <p class="note"><strong>Modelo inicial:</strong> revise este texto com orientação jurídica antes de disponibilizar o serviço publicamente. Preencha os dados de contato do responsável no arquivo README.</p>
 <h2>1. Aceitação e elegibilidade</h2><p>Ao acessar o Conecta, você concorda com estes termos. Se não concordar, não utilize o serviço. Menores devem utilizá-lo com autorização e supervisão de seus responsáveis, conforme a legislação aplicável.</p>
-<h2>2. Como o serviço funciona</h2><p>O Conecta permite trocar mensagens e transferir arquivos temporariamente entre dispositivos conectados à mesma sala. O serviço não garante disponibilidade contínua, entrega de mensagens, armazenamento permanente ou recuperação de arquivos. Por padrão, o servidor não grava conteúdo em banco de dados. Se o operador habilitar o painel administrativo, até 500 eventos recentes (incluindo texto das mensagens e metadados de arquivos, nunca os bytes dos arquivos) permanecem temporariamente em memória e são acessíveis apenas após autenticação administrativa; reiniciar o processo limpa esse histórico.</p>
+<h2>2. Como o serviço funciona</h2><p>O Conecta permite trocar mensagens e transferir arquivos temporariamente entre dispositivos conectados à mesma sala. O serviço não garante disponibilidade contínua, entrega de mensagens, armazenamento permanente ou recuperação de arquivos. O conteúdo não é armazenado em histórico pelo servidor desta versão, mas pode permanecer temporariamente na memória dos dispositivos conectados.</p>
 <h2>3. Códigos de sala e responsabilidade</h2><p>Os códigos de sala funcionam como segredo de acesso. Use códigos únicos, difíceis de adivinhar e compartilhe-os apenas com pessoas autorizadas. Qualquer pessoa que conheça o código poderá tentar entrar na sala. Não use o serviço para dados sigilosos ou de alto risco.</p>
 <h2>4. Uso proibido</h2><p>É proibido utilizar o serviço para atividades ilegais, fraudes, ameaças, assédio, violação de direitos autorais, distribuição de malware, exploração de vulnerabilidades, envio de conteúdo não autorizado ou tentativa de prejudicar a disponibilidade do serviço ou outros usuários.</p>
 <h2>5. Arquivos e conteúdo</h2><p>Você é responsável pelo conteúdo que envia e deve ter os direitos e autorizações necessários. Não envie arquivos ilegais, maliciosos, confidenciais sem autorização ou que violem direitos de terceiros. Verifique arquivos recebidos com ferramentas de segurança antes de abri-los. O serviço não realiza análise antivírus nesta versão.</p>
@@ -147,7 +76,7 @@ const privacyPage = htmlPage('Política de privacidade', `
 <p class="note"><strong>Modelo inicial:</strong> esta política deve ser completada com a identidade do controlador, contato, hospedagem, configurações reais e revisão jurídica. Não publique sem preencher esses dados.</p>
 <h2>1. Quem é responsável</h2><p>O responsável pelo tratamento deve ser identificado pelo operador do site. Antes da publicação, informe nome/razão social e um canal de contato válido no README e nesta política. Não invente nem deixe essa identificação indefinida em produção.</p>
 <h2>2. Dados tratados</h2><p>O conteúdo das mensagens, nomes de dispositivos, códigos de sala e arquivos são processados pelo servidor para retransmissão entre participantes conectados. O código de sala não deve ser considerado autenticação forte. O provedor de hospedagem e a infraestrutura de proteção podem processar dados técnicos, como endereço IP, horário de acesso e registros de segurança, de acordo com suas próprias políticas e configurações.</p>
-<h2>3. Armazenamento e retenção</h2><p>Esta versão não grava mensagens ou arquivos em banco de dados. Quando o painel administrativo está habilitado por ADMIN_PASSWORD, o servidor mantém até 500 eventos recentes em memória, incluindo conteúdo textual das mensagens e metadados dos arquivos (nome, tipo e tamanho), acessíveis apenas a administradores autenticados. O conteúdo binário dos arquivos não é guardado no painel. O histórico é apagado quando o processo reinicia. O estado de compartilhamento de tela (quem está compartilhando) é registrado, mas o painel não captura, grava nem exibe o vídeo da tela. Logs operacionais da plataforma de hospedagem podem existir fora do controle direto do aplicativo e seguem as configurações do provedor.</p><p>O compartilhamento de tela é iniciado somente após uma ação explícita do usuário e a seleção de uma tela, janela ou guia no navegador. O fluxo de vídeo usa WebRTC diretamente entre os dispositivos participantes; o servidor Conecta encaminha mensagens de sinalização para estabelecer a conexão. Não há captura oculta nem gravação pelo aplicativo. A disponibilidade pode depender da rede, do navegador e de infraestrutura de conectividade.</p>
+<h2>3. Armazenamento e retenção</h2><p>Esta versão não grava mensagens ou arquivos em banco de dados. Conteúdo é mantido em memória durante a retransmissão e pode permanecer no navegador dos participantes enquanto a página estiver aberta. Logs operacionais da plataforma de hospedagem podem existir fora do controle direto do aplicativo e seguem as configurações do provedor.</p><p>O compartilhamento de tela é iniciado somente após uma ação explícita do usuário e a seleção de uma tela, janela ou guia no navegador. O fluxo de vídeo usa WebRTC diretamente entre os dispositivos participantes; o servidor Conecta encaminha mensagens de sinalização para estabelecer a conexão. Não há captura oculta nem gravação pelo aplicativo. A disponibilidade pode depender da rede, do navegador e de infraestrutura de conectividade.</p>
 <h2>4. Finalidades e bases legais</h2><p>Os dados são processados para conectar dispositivos, encaminhar mensagens e arquivos, manter a segurança e prevenir abusos. O operador deve definir e documentar as bases legais aplicáveis à sua operação, inclusive conforme a LGPD, e ajustar esta seção à prática real do serviço.</p>
 <h2>5. Compartilhamento</h2><p>O conteúdo é compartilhado com os demais dispositivos conectados à mesma sala e processado pela infraestrutura necessária para hospedar e proteger o site. Não prometa ausência total de compartilhamento técnico: hospedagem, rede e proteção contra ataques podem processar metadados.</p>
 <h2>6. Segurança</h2><p>São adotadas medidas técnicas para reduzir riscos, mas nenhum serviço conectado à internet pode garantir segurança absoluta. O serviço não oferece criptografia ponta a ponta nem análise antivírus de arquivos. Evite compartilhar dados pessoais sensíveis.</p>
@@ -155,7 +84,7 @@ const privacyPage = htmlPage('Política de privacidade', `
 <h2>8. Crianças, cookies e terceiros</h2><p>Esta versão não implementa cookies próprios para publicidade ou análise. A hospedagem, a CDN ou a proteção contra ataques podem utilizar cookies técnicos ou coletar dados conforme suas configurações. O operador deve revisar essas configurações e a adequação para crianças e adolescentes antes da publicação.</p>
 <h2>9. Atualizações e contato</h2><p>Esta política pode ser atualizada quando o serviço mudar. Antes de publicar, informe a data efetiva, a identidade do responsável e um canal de contato válido.</p>`);
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   const pathname = url.pathname;
   const headers = {
@@ -167,40 +96,6 @@ const server = http.createServer(async (req, res) => {
     'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     'Cache-Control': 'no-store'
   };
-  if (pathname === '/admin/login' && req.method === 'POST') {
-    if (!ADMIN_EMAIL || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ADMIN_EMAIL) || ADMIN_PASSWORD.length < 16) return jsonResponse(res, 503, { error: 'Painel desativado: configure ADMIN_EMAIL válido e ADMIN_PASSWORD com pelo menos 16 caracteres no ambiente do servidor.' });
-    const origin = req.headers.origin;
-    if (origin) { try { if (new URL(origin).host.toLowerCase() !== String(req.headers.host || '').toLowerCase()) return jsonResponse(res, 403, { error: 'Origem inválida.' }); } catch { return jsonResponse(res, 403, { error: 'Origem inválida.' }); } }
-    const ip = getClientIp(req); const now = Date.now();
-    let attempt = ADMIN_LOGIN_ATTEMPTS.get(ip) || { count: 0, until: now + 15 * 60 * 1000 };
-    if (attempt.until <= now) attempt = { count: 0, until: now + 15 * 60 * 1000 };
-    if (attempt.count >= 8) return jsonResponse(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
-    let body; try { body = await readBody(req); } catch { return jsonResponse(res, 400, { error: 'Solicitação inválida.' }); }
-    const submittedEmail = String(body.email || '').trim().toLowerCase();
-    const emailMatches = constantTimeEqual(submittedEmail, ADMIN_EMAIL);
-    const passwordMatches = constantTimeEqual(body.password || '', ADMIN_PASSWORD);
-    if (!(emailMatches && passwordMatches)) { attempt.count++; ADMIN_LOGIN_ATTEMPTS.set(ip, attempt); return jsonResponse(res, 401, { error: 'E-mail ou senha incorretos.' }); }
-    ADMIN_LOGIN_ATTEMPTS.delete(ip);
-    for (const [key, value] of ADMIN_SESSIONS) if (value.expiresAt < now) ADMIN_SESSIONS.delete(key);
-    if (ADMIN_SESSIONS.size >= 1000) ADMIN_SESSIONS.delete(ADMIN_SESSIONS.keys().next().value);
-    const token = crypto.randomBytes(32).toString('base64url'); ADMIN_SESSIONS.set(token, { expiresAt: now + ADMIN_SESSION_TTL });
-    const secure = req.socket.encrypted || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
-    return jsonResponse(res, 200, { ok: true }, { 'Set-Cookie': `conecta_admin=${encodeURIComponent(token)}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=28800${secure ? '; Secure' : ''}` });
-  }
-  if (pathname === '/admin/logout' && req.method === 'POST') {
-    const current = adminSession(req); if (current) ADMIN_SESSIONS.delete(current.token);
-    return jsonResponse(res, 200, { ok: true }, { 'Set-Cookie': 'conecta_admin=; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=0' });
-  }
-  if (pathname === '/admin/api/state' && req.method === 'GET') {
-    if (!adminSession(req)) return jsonResponse(res, 401, { error: 'Autenticação necessária.' });
-    return jsonResponse(res, 200, adminSnapshot());
-  }
-  if (pathname === '/admin' || pathname === '/admin/') {
-    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { ...headers, Allow: 'GET, HEAD' }); return res.end('Method not allowed'); }
-    res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' });
-    if (req.method === 'HEAD') return res.end();
-    return fs.createReadStream(ADMIN_INDEX).on('error', () => { if (!res.headersSent) res.writeHead(500); res.end('Admin panel unavailable'); }).pipe(res);
-  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { ...headers, 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, HEAD' });
     return res.end('Method not allowed');
@@ -216,7 +111,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' }); return res.end(privacyPage);
   }
   if (pathname === '/robots.txt') {
-    res.writeHead(200, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('User-agent: *\nDisallow: /healthz\nDisallow: /admin\n');
+    res.writeHead(200, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('User-agent: *\nDisallow: /healthz\n');
   }
   if (pathname === '/' || pathname === '/index.html') {
     res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' });
@@ -285,9 +180,6 @@ wss.on('connection', ws => {
       }
       c.room = m.room;
       c.authenticated = true;
-      c.connectedAt = Date.now();
-      if (!ROOM_HISTORY.has(c.room)) ROOM_HISTORY.set(c.room, { room: c.room, createdAt: c.connectedAt, lastActivity: c.connectedAt, messageCount: 0, fileCount: 0 });
-      recordAdminEvent(c.room, 'join', { user: c.name });
       clients.set(id, c);
       sendJson(ws, { type: 'auth-ok', id, devices: roomDevices(c.room) });
       sendToRoom(c.room, { type: 'devices', devices: roomDevices(c.room) });
@@ -304,7 +196,6 @@ wss.on('connection', ws => {
     }
     if (m.type === 'join') {
       c.name = safeName(m.name);
-      recordAdminEvent(c.room, 'join', { user: c.name });
       sendToRoom(c.room, { type: 'system', text: `${c.name} entrou na sala.` }, id);
       sendToRoom(c.room, { type: 'devices', devices: roomDevices(c.room) });
       return;
@@ -313,14 +204,12 @@ wss.on('connection', ws => {
       const owner = screenOwners.get(c.room);
       if (owner && owner !== id) { sendJson(ws, { type: 'warning', message: 'Outro dispositivo já está compartilhando a tela.' }); return; }
       screenOwners.set(c.room, id);
-      recordAdminEvent(c.room, 'screen-start', { user: c.name });
       sendToRoom(c.room, { type: 'screen-start', from: id, name: c.name }, id);
       return;
     }
     if (m.type === 'screen-stop') {
       if (screenOwners.get(c.room) === id) {
         screenOwners.delete(c.room);
-        recordAdminEvent(c.room, 'screen-stop', { user: c.name });
         sendToRoom(c.room, { type: 'screen-stop', from: id, name: c.name }, id);
       }
       return;
@@ -349,7 +238,6 @@ wss.on('connection', ws => {
       if (typeof m.text !== 'string') return invalidMessage(c);
       const text = m.text.replace(/\u0000/g, '').trim();
       if (!text || text.length > MAX_TEXT) return invalidMessage(c);
-      recordAdminEvent(c.room, 'message', { user: c.name, text });
       sendToRoom(c.room, { type: 'chat', name: c.name, text, sentAt: Date.now() }, id);
       return;
     }
@@ -359,7 +247,6 @@ wss.on('connection', ws => {
       const data = Buffer.from(m.data, 'base64');
       if (!data.length || data.length > MAX_FILE_BYTES || data.toString('base64') !== m.data) return invalidMessage(c);
       const mime = typeof m.mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(m.mime) ? m.mime.slice(0, 100) : 'application/octet-stream';
-      recordAdminEvent(c.room, 'file', { user: c.name, filename: safeFilename(m.filename), mime, size: data.length });
       sendToRoom(c.room, { type: 'file', name: c.name, filename: safeFilename(m.filename), mime, size: data.length, data: data.toString('base64'), sentAt: Date.now() }, id);
       return;
     }
@@ -370,8 +257,8 @@ wss.on('connection', ws => {
     const count = Math.max(0, (ipConnections.get(ip) || 1) - 1);
     if (count) ipConnections.set(ip, count); else ipConnections.delete(ip);
     if (c.room) {
-      if (screenOwners.get(c.room) === id) { screenOwners.delete(c.room); recordAdminEvent(c.room, 'screen-stop', { user: c.name }); sendToRoom(c.room, { type: 'screen-stop', from: id, name: c.name }); }
-      if (c.authenticated) { recordAdminEvent(c.room, 'leave', { user: c.name }); sendToRoom(c.room, { type: 'system', text: `${c.name} saiu da sala.` }); }
+      if (screenOwners.get(c.room) === id) { screenOwners.delete(c.room); sendToRoom(c.room, { type: 'screen-stop', from: id, name: c.name }); }
+      if (c.authenticated) sendToRoom(c.room, { type: 'system', text: `${c.name} saiu da sala.` });
       sendToRoom(c.room, { type: 'devices', devices: roomDevices(c.room) });
     }
   });

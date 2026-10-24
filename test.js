@@ -7,13 +7,13 @@ const WebSocket = require('ws');
 
 let child;
 let port;
-function request(pathname, method = 'GET', headers = {}, body = null) {
+function request(pathname, method = 'GET') {
   return new Promise((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port, path: pathname, method, headers }, res => {
+    const req = http.request({ hostname: '127.0.0.1', port, path: pathname, method }, res => {
       let body = '';
       res.setEncoding('utf8'); res.on('data', chunk => body += chunk); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
     });
-    req.on('error', reject); if (body !== null) req.write(body); req.end();
+    req.on('error', reject); req.end();
   });
 }
 function waitForServer() {
@@ -30,7 +30,7 @@ function waitForServer() {
 }
 test('HTTP routes, security headers, 404 and websocket auth', async t => {
   port = 18000 + Math.floor(Math.random() * 10000);
-  child = spawn(process.execPath, ['server.js'], { cwd: __dirname, env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', ADMIN_EMAIL: 'admin-test@example.com', ADMIN_PASSWORD: 'test-admin-password-strong-2026' }, stdio: 'ignore' });
+  child = spawn(process.execPath, ['server.js'], { cwd: __dirname, env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' }, stdio: 'ignore' });
   t.after(() => { if (child && child.exitCode === null) child.kill('SIGTERM'); });
   await waitForServer();
   const home = await request('/');
@@ -38,23 +38,14 @@ test('HTTP routes, security headers, 404 and websocket auth', async t => {
   assert.match(home.body, /Termos de uso/);
   assert.match(home.body, /screenShareBtn/);
   assert.match(home.body, /getDisplayMedia/);
-  assert.doesNotMatch(home.body, /href=["']\/admin["']/i);
-  assert.doesNotMatch(home.body, /Painel admin/i);
   assert.match(home.body, /RTCPeerConnection/);
-  const adminPage = await request('/admin'); assert.equal(adminPage.status, 200); assert.match(adminPage.body, /Painel administrativo/);
-  assert.equal((await request('/admin/api/state')).status, 401);
-  const wrongEmailBody = JSON.stringify({ email: 'wrong@example.com', password: 'test-admin-password-strong-2026' });
-  assert.equal((await request('/admin/login', 'POST', { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(wrongEmailBody) }, wrongEmailBody)).status, 401);
-  const login = await request('/admin/login', 'POST', { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(JSON.stringify({ email: 'admin-test@example.com', password: 'test-admin-password-strong-2026' })) }, JSON.stringify({ email: 'admin-test@example.com', password: 'test-admin-password-strong-2026' }));
-  assert.equal(login.status, 200); assert.match(login.headers['set-cookie'][0], /HttpOnly/);
-  const adminCookie = login.headers['set-cookie'][0].split(';')[0];
-  assert.equal((await request('/admin/api/state', 'GET', { Cookie: adminCookie })).status, 200);
   assert.equal((await request('/terms')).status, 200);
   assert.match((await request('/terms')).body, /Uso proibido/);
   assert.equal((await request('/privacy')).status, 200);
   assert.match((await request('/privacy')).body, /LGPD/);
   assert.equal((await request('/healthz')).status, 200);
   const missing = await request('/rota-que-nao-existe'); assert.equal(missing.status, 404); assert.match(missing.body, /Página não encontrada/);
+  const admin = await request('/admin'); assert.equal(admin.status, 404); assert.match(admin.body, /Página não encontrada/); assert.doesNotMatch(admin.body, /Painel administrativo|login de administrador/i);
   assert.equal((await request('/', 'POST')).status, 405);
 
   const ws = new WebSocket(`ws://127.0.0.1:${port}/`, { origin: `http://127.0.0.1:${port}` });
@@ -74,11 +65,6 @@ test('HTTP routes, security headers, 404 and websocket auth', async t => {
   await new Promise((resolve, reject) => { second.once('open', resolve); second.once('error', reject); });
   second.send(JSON.stringify({ type: 'auth', room: 'SalaSegura_2026' }));
   const secondAuth = await secondAuthPromise;
-  const chatPromise = waitForType(second, 'chat');
-  ws.send(JSON.stringify({ type: 'chat', text: 'admin audit test' }));
-  assert.equal((await chatPromise).text, 'admin audit test');
-  const adminState = await request('/admin/api/state', 'GET', { Cookie: adminCookie });
-  assert.match(adminState.body, /admin audit test/);
   const startedPromise = waitForType(second, 'screen-start');
   ws.send(JSON.stringify({ type: 'screen-start' }));
   const started = await startedPromise; assert.equal(started.from, auth.id);

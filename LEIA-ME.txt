@@ -1,4 +1,4 @@
-CONECTA 3.1 — LEIA-ME
+CONECTA 3.2.1 — LEIA-ME (SEM PAINEL ADMINISTRATIVO)
 
 Para publicar no GitHub + Render, leia primeiro README.md e DEPLOY-RENDER.txt.
 Para configurar um domínio protegido pela Cloudflare, leia CLOUDFLARE.md.
