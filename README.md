@@ -1,4 +1,6 @@
 # Conecta 3.1 — versão revisada
+SITE OFICIAL DO REPOSITÓRIO:
+https://conecta-rrtn.onrender.com/
 
 Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos entre dispositivos conectados à mesma sala. Compatível com Render; a interface funciona em navegadores modernos de computador, tablet e celular.
 
