@@ -1,11 +1,12 @@
 {
   "name": "conecta-rede-local",
-  "version": "2.0.0",
-  "private": false,
-  "description": "Chat em tempo real e envio de arquivos por salas compartilhadas",
+  "version": "3.1.0",
+  "private": true,
+  "description": "Conecta — chat em tempo real e compartilhamento temporário de arquivos entre dispositivos",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "ws": "^8.18.0"
