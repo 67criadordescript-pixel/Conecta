@@ -1,6 +1,4 @@
-# Conecta 3.1 — versão revisada
-SITE OFICIAL DO REPOSITÓRIO:
-https://conecta-rrtn.onrender.com/
+# Conecta 3.3 — painel administrativo com privacidade
 
 Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos entre dispositivos conectados à mesma sala. Compatível com Render; a interface funciona em navegadores modernos de computador, tablet e celular.
 
@@ -8,6 +6,9 @@ Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos ent
 - Interface responsiva com busca local de mensagens, contador de caracteres e lista de dispositivos conectados.
 - Chat em tempo real e compartilhamento de arquivos de até 8 MB por arquivo.
 - Rotas de Termos de Uso (`/terms`), Política de Privacidade (`/privacy`), 404 amigável e health check (`/healthz`).
+- Painel administrativo protegido em `/admin`, com lista de salas vistas na instância, dispositivos conectados, mensagens recentes e metadados de arquivos; atualização automática a cada 2,5 segundos.
+- O login administrativo exige `ADMIN_EMAIL` válido e `ADMIN_PASSWORD` com no mínimo 16 caracteres. Configure ambas como variáveis de ambiente no Render; o painel fica desativado se estiverem ausentes. Sessão HttpOnly/SameSite, tentativas de login limitadas e histórico limitado a 500 eventos em memória.
+- O painel mostra o estado do compartilhamento de tela, mas não captura, grava nem espelha o vídeo dos usuários.
 - Mensagens e nomes renderizados via `textContent`, evitando interpretar texto do usuário como HTML.
 - Limite de tamanho de payload, validação de mensagens, validação de Base64 e nome de arquivo, limite de mensagens, limite de conexões, limite de participantes por sala, heartbeat WebSocket e até cinco tentativas automáticas de reconexão com espera progressiva.
 - Cabeçalhos de segurança, CSP, `nosniff`, proteção contra enquadramento e política de permissões restrita.
@@ -28,11 +29,13 @@ Aplicação Node.js/WebSocket para troca temporária de mensagens e arquivos ent
 - `MAX_DEVICES_PER_ROOM` (padrão 10)
 - `MESSAGE_LIMIT_PER_SECOND` (padrão 8)
 - `ALLOWED_ORIGINS` (lista de origens separadas por vírgula; só configure origens que controla)
+- `ADMIN_EMAIL` (e-mail autorizado para entrar em `/admin`) e `ADMIN_PASSWORD` (senha exclusiva, aleatória e com no mínimo 16 caracteres; configure no Render e nunca a coloque no GitHub)
 
 ## Segurança e limitações conhecidas
 - O código de sala deve ter de 8 a 32 caracteres (`A-Z`, `a-z`, números, hífen ou sublinhado). É uma senha compartilhada simples, não uma conta com identidade verificada. Use código aleatório e exclusivo.
 - O servidor retransmite mensagens e arquivos; **não há criptografia ponta a ponta**. Não envie senhas, documentos confidenciais ou dados sensíveis.
-- O servidor não armazena o histórico em banco de dados. Os arquivos trafegam pela memória do servidor e não são verificados por antivírus.
+- Não há banco de dados. Se o painel administrativo for habilitado, o servidor mantém os 500 eventos mais recentes em memória, incluindo texto das mensagens e metadados de arquivos, acessíveis a administradores autenticados; o histórico some ao reiniciar. Os bytes dos arquivos não são retidos no painel.
+- O painel `/admin` é uma ferramenta de administração sensível: informe os participantes de forma transparente. Ele não mostra vídeo de tela; exibe apenas o estado e o nome do participante compartilhando. O fluxo WebRTC continua entre dispositivos da sala.
 - Limites por IP são mantidos em memória por instância. No Render, o código lê `X-Forwarded-For` somente quando `RENDER_SERVICE_ID` está definido; em outras hospedagens, configure explicitamente o proxy confiável antes de usar esse cabeçalho. Em múltiplas instâncias, os limites não são compartilhados; use um armazenamento distribuído para proteção consistente.
 - O CSP permite scripts inline porque o aplicativo atual contém JavaScript inline. Uma futura melhoria é mover scripts e estilos para arquivos próprios e remover `'unsafe-inline'`.
 - A aplicação não substitui monitoramento, backups, revisão de dependências, teste de invasão ou auditoria de segurança independente.

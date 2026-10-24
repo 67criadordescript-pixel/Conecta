@@ -1,4 +1,4 @@
-# Relatório de revisão técnica — Conecta 3.1
+# Relatório de revisão técnica — Conecta 3.3
 
 ## Verificações executadas neste pacote
 - `node --check server.js`: passou.
@@ -38,3 +38,12 @@ O teste de integração `npm test` usa o pacote `ws`, listado em `package.json`.
 - Encerramento tratado por botão, evento `ended` da faixa de vídeo, desconexão WebSocket e encerramento da sessão.
 - STUN está configurado para facilitar a conectividade. Redes restritivas podem exigir TURN; conectividade universal não pode ser garantida sem um serviço TURN gerenciado e testado.
 - Testes automatizados incluem os caminhos de sinalização do servidor quando as dependências estão instaladas. Teste real de mídia entre navegadores/dispositivos ainda deve ser realizado após o deploy.
+
+
+## Painel administrativo (versão 3.3)
+- Endpoint `/admin`, login em `/admin/login`, estado em `/admin/api/state`, logout em `/admin/logout`.
+- O painel fica desativado se `ADMIN_PASSWORD` tiver menos de 16 caracteres. Configure uma senha aleatória como segredo no Render.
+- Sessões aleatórias em memória, cookie HttpOnly/SameSite=Strict, Secure em HTTPS, comparação de senha em tempo constante, limite de tentativas por IP e endpoints sem cache.
+- O histórico limita-se a 500 eventos em memória. Texto de mensagens e metadados de arquivos são visíveis a administradores autenticados; bytes de arquivos não são armazenados pelo painel. Reiniciar o processo limpa eventos e salas lembradas.
+- Por privacidade, o painel exibe apenas o estado do compartilhamento de tela, não o vídeo. Não existe captura ou gravação de tela pelo administrador.
+- Antes de uso público, atualize a política de privacidade e informe os participantes sobre a existência e finalidade do painel.
